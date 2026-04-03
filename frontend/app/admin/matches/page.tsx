@@ -1,8 +1,18 @@
+"use client";
+
+import Link from "next/link";
+
 export default function AdminMatchesPage() {
   return (
-    <main className="p-4">
-      <h1 className="text-2xl font-bold">Admin: Matches</h1>
-      <p className="text-gray-500 mt-2">Match management coming soon</p>
-    </main>
+    <div className="max-w-4xl mx-auto p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Match Management</h1>
+        <Link href="/admin" className="text-sm text-green-600 hover:underline">← Admin</Link>
+      </div>
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-8 text-center text-gray-500">
+        <p className="text-4xl mb-4">⚽</p>
+        <p>Match management interface coming soon.</p>
+      </div>
+    </div>
   );
 }
