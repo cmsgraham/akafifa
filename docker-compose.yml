@@ -147,6 +147,19 @@ services:
     networks:
       - app_net
 
+  # ── Mail Server (Mailpit) ──────────────────────────────────
+  mailpit:
+    image: axllent/mailpit:latest
+    expose:
+      - "1025"
+      - "8025"
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    restart: unless-stopped
+    networks:
+      - app_net
+
 volumes:
   db_data:
   avatars:
