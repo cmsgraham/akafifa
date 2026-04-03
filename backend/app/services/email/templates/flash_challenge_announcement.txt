@@ -1,0 +1,14 @@
+New Flash Challenge!
+
+Hi {display_name},
+
+A new flash challenge is live:
+
+  "{challenge_title}"
+
+Points: {points_value}
+Closes at: {close_at} UTC
+
+Log in to submit your answer before it closes!
+
+— The Tournament Hub Team

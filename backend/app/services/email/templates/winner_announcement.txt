@@ -1,0 +1,14 @@
+Winner Announcement
+
+Hi {display_name},
+
+The results are in for {stage_name}!
+
+Winner: {winner_name}
+Points: {winner_points}
+
+Check the leaderboard to see the full standings.
+
+Congratulations to the winner!
+
+— The Tournament Hub Team

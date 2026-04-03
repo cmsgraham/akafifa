@@ -1,0 +1,13 @@
+Prediction Reminder
+
+Hi {display_name},
+
+The following match locks for predictions in about 24 hours:
+
+  {home_team} vs {away_team}
+  Kickoff: {kickoff_time} UTC
+  Lock deadline: {lock_at} UTC
+
+Don't forget to submit your prediction!
+
+— The Tournament Hub Team

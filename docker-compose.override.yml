@@ -1,0 +1,57 @@
+version: "3.9"
+
+# Overrides for local development only.
+# This file is automatically loaded by Docker Compose alongside docker-compose.yml.
+
+services:
+  # Expose API directly for debugging
+  web:
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    environment:
+      - APP_ENV=local
+
+  # Expose frontend directly for hot-reload
+  frontend:
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - APP_ENV=local
+
+  # Expose DB for local tools (pgAdmin, DBeaver, etc.)
+  db:
+    ports:
+      - "5432:5432"
+
+  # Expose Redis for local inspection
+  redis:
+    ports:
+      - "6379:6379"
+
+  # Mailpit: SMTP catch-all + web UI for local email inspection
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"   # Web UI
+      - "1025:1025"   # SMTP
+    restart: unless-stopped
+    networks:
+      - app_net
+
+  worker:
+    volumes:
+      - ./backend:/app
+    environment:
+      - APP_ENV=local
+
+  scheduler:
+    volumes:
+      - ./backend:/app
+    environment:
+      - APP_ENV=local

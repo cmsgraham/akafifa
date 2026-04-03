@@ -1,0 +1,11 @@
+Welcome to The Tournament Hub!
+
+Hi {display_name},
+
+Your account has been created successfully.
+
+You can now log in and start making predictions for upcoming matches.
+
+Good luck!
+
+— The Tournament Hub Team

@@ -1,0 +1,15 @@
+Duel Result
+
+Hi {display_name},
+
+The duel for {home_team} vs {away_team} has been decided!
+
+  Your prediction: {your_home} - {your_away} ({your_points} pts)
+  Opponent: {opponent_name}
+  Their prediction: {their_home} - {their_away} ({their_points} pts)
+
+  Result: {result}
+
+Check your duel history for full details.
+
+— The Tournament Hub Team

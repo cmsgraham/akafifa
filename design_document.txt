@@ -1,0 +1,624 @@
+Improved prompt
+
+Role:
+You are a Senior Full-Stack Architect and Developer.
+
+Objective:
+Design and implement a production-ready, secure, mobile-first World Cup prediction platform for internal corporate use called “The Tournament Hub.” The app must support match predictions, leaderboards, social engagement, admin-managed flash challenges, and plain-text email notifications. It must be deployable on Linode using Docker Compose.
+
+Build the solution with a clean, modular architecture so new tournaments, new challenge types, and future scoring rules can be added without major refactors.
+
+1. Product Scope
+
+Create a web platform where authenticated users can:
+
+view tournament matches and schedules
+submit predictions before match lock-out
+see personal and global leaderboards
+participate in match-specific social discussions
+challenge other users in 1-vs-1 prediction duels
+answer admin-created flash challenges
+manage their profile, favorite team, and avatar
+
+Admins must be able to:
+
+manage tournament configuration
+define prediction lock-out timing
+manage flash challenges and prizes
+manually override match/challenge scoring when needed
+review audit logs of critical actions
+re-sync match data from the external soccer API
+2. Architecture & Tech Stack
+
+Use the following stack unless there is a strong implementation reason to choose the equivalent alternative.
+
+Frontend
+Next.js with App Router
+TypeScript
+Tailwind CSS
+Mobile-first design
+Use responsive layouts for phone, tablet, and desktop
+Design should feel modern, playful, and slightly game-like, but still polished enough for corporate internal use
+Backend
+FastAPI with Python
+REST API
+Background task scheduling separated from the web process
+Database
+PostgreSQL as primary relational database
+Redis for:
+leaderboard caching
+rate limiting
+background job state / queues
+Background Jobs
+Use RQ, Celery, or another Python queue system compatible with Redis
+A dedicated worker container must handle:
+outbound email jobs
+scheduled reminders
+external API sync tasks
+leaderboard cache rebuilds
+Infrastructure
+Docker Compose deployment
+Optimized for Ubuntu on Linode
+Separate containers for:
+web app / API
+PostgreSQL
+Redis
+worker
+optional scheduler/beat service if needed
+3. Core Functional Requirements
+3.1 Tournament & Match Data
+
+Integrate with a soccer data API such as Football-Data.org or API-Football.
+
+The system must:
+
+sync tournaments, teams, groups, stages, and matches
+store kickoff time, venue, status, and final result
+cache external API responses to avoid rate limit issues
+support manual admin refresh
+support scheduled background syncs
+support manual admin override of match data if the provider is wrong or delayed
+
+Design the code so the external API provider is abstracted behind a service layer and can be replaced later.
+
+3.2 Predictions
+
+Users can submit one prediction per match:
+
+home team score
+away team score
+
+Rules:
+
+predictions are editable only until the match enters lock-out
+after lock-out, predictions become read-only
+once a match is completed and results are confirmed, points are calculated automatically
+recalculation must be idempotent
+3.3 Lock-out Logic
+
+Lock-out must be configurable by admins.
+
+Requirements:
+
+configurable as hours before kickoff
+default example: 1 hour before kickoff
+store the resolved lock_at timestamp per match so rule changes do not retroactively affect already published match windows unless an admin explicitly reprocesses them
+all time handling must use UTC internally
+UI may display times in the user’s local timezone
+server-side validation must enforce lock-out even if the client is bypassed
+3.4 Scoring System
+
+Implement the default scoring model:
+
+3 points for exact score
+1 point for correct outcome only
+0 points otherwise
+
+Outcome means:
+
+home win
+draw
+away win
+
+Also make the scoring engine extensible to support future variants such as:
+
+weighted points for underdog picks
+bonus points for knockout matches
+special round multipliers
+
+Do not enable weighted scoring by default, but structure the code so it can be turned on later.
+
+3.5 Leaderboards
+
+Support:
+
+global leaderboard
+leaderboard by round/stage
+optional friends/challenge leaderboard later
+
+Include tie-breakers in this exact order:
+
+highest exact-score hits
+highest correct-outcome hits
+earliest average prediction submission time before lock
+alphabetical username as final stable tie-breaker
+
+Redis should cache leaderboard views for performance, but PostgreSQL remains the source of truth.
+
+3.6 Social & Engagement
+The Lounge
+
+Each match has a comment feed.
+
+Requirements:
+
+authenticated users can post comments
+users can edit/delete only their own comments within a short grace period, e.g. 5 minutes
+admins can moderate/delete any comment
+comments should support pagination
+basic anti-abuse protections:
+rate limit posting
+max comment length
+optional banned-word filter
+real-time updates preferred via polling or websocket/SSE, but polling is acceptable if simpler
+User Challenges / Duals
+
+Users can challenge each other for a specific match.
+
+Requirements:
+
+one user initiates a challenge
+target user must accept or decline
+both users submit predictions normally
+once the match completes, winner of the duel is determined by prediction points
+if tied, mark duel as draw
+include a token/badge/streak system only for engagement, with no real money or gambling language
+allow users to see duel history
+3.7 Profiles
+
+Each user profile must support:
+
+display name
+email
+avatar upload
+favorite team
+short optional bio
+total points
+duel record
+badges or streak counters
+
+Avatar storage:
+
+support local Docker volume by default
+optional S3-compatible storage as configurable alternative
+
+Favorite team should influence small UI accents, not full theme takeover.
+
+3.8 Admin Tools
+
+Admins need pages/API to:
+
+configure tournament settings
+configure lock-out hours
+create/edit/delete flash challenges
+assign prizes for stages or final winners
+manually trigger result recalculation
+manually override match result or challenge result
+trigger external data re-sync
+view audit log entries
+Flash Challenges
+
+Examples:
+
+“Will there be a red card?”
+“Will a fan run onto the pitch?”
+
+Requirements:
+
+challenge types must be extensible
+some flash challenges may be manually resolved by admins
+some may later support automatic resolution if the data provider supports it
+users answer with Yes/No or predefined options
+admins can set:
+open time
+close time
+points value
+eligibility scope
+resolution method: automatic or manual
+4. Communication System
+Plain-Text Email Worker
+
+All outgoing emails must be plain text only.
+No HTML. No embedded images. No marketing formatting.
+
+Supported email events:
+
+welcome email
+password reset email
+24-hour reminder before prediction closes for upcoming matches
+winner announced notification
+flash challenge announcement
+duel invitation and duel result
+
+Architecture requirements:
+
+web/API container must enqueue jobs only
+worker container sends emails
+retries with exponential backoff
+dead-letter handling or failure logging for repeated delivery failures
+email templates stored as versioned plain-text templates
+support SMTP via environment variables
+5. Security Requirements
+
+Implement the following:
+
+Authentication
+JWT-based auth
+store auth token in secure, httpOnly cookie
+refresh token flow or secure session renewal
+password hashing with Argon2 or bcrypt
+email-based password reset flow
+Authorization
+
+Roles:
+
+user
+admin
+
+Admins can manage tournament/challenge settings and overrides.
+Normal users cannot access admin APIs.
+
+Validation
+strict server-side validation using typed schemas
+reject predictions after lock_at
+reject invalid scores
+reject duplicate duel responses where not allowed
+validate uploaded avatar type and size
+Hardening
+CSRF protection if using cookie auth
+rate limiting for login, comment posting, and prediction submission
+audit log for sensitive admin actions
+input sanitization for comments/profile fields
+secure file upload handling
+secrets only via environment variables
+no credentials hard-coded anywhere
+6. Performance & Reliability
+use Redis caching for expensive leaderboard queries
+use DB indexes for predictions, matches, leaderboard queries, and comments
+make result processing idempotent
+external API sync must avoid duplicate inserts
+all critical background jobs must be retry-safe
+use healthcheck endpoints
+container startup order must not assume DB is instantly ready
+include migration support for schema evolution
+7. Data Model Requirements
+
+Design and implement SQL schema for at least these tables:
+
+users
+user_profiles
+tournaments
+teams
+stages
+matches
+match_results
+predictions
+flash_challenges
+flash_challenge_options
+flash_challenge_answers
+duel_challenges
+comments
+prizes
+leaderboard_snapshots or cached aggregates if needed
+audit_logs
+outbound_email_jobs or job tracking table if useful
+
+Important data rules:
+
+one prediction per user per match
+unique duel per challenger/opponent/match unless prior duel is closed
+comments tied to match and user
+matches tied to tournament and stage
+flash challenges tied either to a match or tournament scope
+support soft delete where useful for moderation/admin history
+
+Include:
+
+primary keys
+foreign keys
+unique constraints
+indexes
+created_at / updated_at
+status fields where needed
+8. API Requirements
+
+Create REST endpoints with request/response schemas and validation.
+
+Minimum required endpoints:
+
+Auth
+POST /api/auth/register
+POST /api/auth/login
+POST /api/auth/logout
+POST /api/auth/refresh
+POST /api/auth/forgot-password
+POST /api/auth/reset-password
+GET /api/auth/me
+Matches & Predictions
+GET /api/tournaments/:id/matches
+GET /api/matches/:id
+POST /api/matches/:id/prediction
+PUT /api/matches/:id/prediction
+GET /api/me/predictions
+POST /api/admin/matches/:id/recalculate
+Leaderboards
+GET /api/leaderboards/global
+GET /api/leaderboards/tournament/:id
+GET /api/leaderboards/stage/:id
+Social Feed
+GET /api/matches/:id/comments
+POST /api/matches/:id/comments
+PUT /api/comments/:id
+DELETE /api/comments/:id
+Duels
+POST /api/matches/:id/duels
+POST /api/duels/:id/accept
+POST /api/duels/:id/decline
+GET /api/me/duels
+Flash Challenges
+GET /api/challenges/active
+POST /api/challenges/:id/answer
+GET /api/me/challenges
+Admin
+POST /api/admin/challenges
+PUT /api/admin/challenges/:id
+POST /api/admin/challenges/:id/resolve
+POST /api/admin/sync/matches
+PUT /api/admin/settings/lockout
+GET /api/admin/audit-logs
+9. Frontend Requirements
+
+Build a clean mobile-first UI with these screens:
+
+login / register / forgot password
+home dashboard
+tournament overview
+match list and match detail
+prediction entry/edit form
+live/global leaderboard
+match lounge comments
+duel center
+flash challenge center
+profile page
+admin dashboard
+
+UX requirements:
+
+must work very well on phones first
+responsive breakpoints for small phones, large phones, tablets, desktop
+avoid horizontal overflow
+skeleton states for loading
+clear locked/open state badges for matches
+show countdown to lock
+favorite team accenting in subtle UI elements
+accessible forms and buttons
+dark mode support preferred
+
+Replace “180% mobile-responsive” with concrete behavior:
+
+fully usable on 320px width
+no clipped controls
+no horizontal scroll on standard app pages
+tap targets at least mobile-friendly size
+sticky bottom actions on mobile where appropriate
+10. Business Logic Details
+Prediction Scoring Function
+
+Implement a reusable scoring function that receives:
+
+predicted home score
+predicted away score
+actual home score
+actual away score
+optional scoring config
+
+It should return:
+
+points awarded
+result type: exact / outcome / miss
+metadata for leaderboard aggregation
+Lock-out Function
+
+Implement a reusable lock-out function that:
+
+receives kickoff UTC timestamp and lock-out-hours config
+returns lock_at timestamp
+supports checking whether a prediction is editable at current server time
+is unit tested
+Result Processing
+
+When a match result becomes final:
+
+calculate scores for all related predictions
+update leaderboard aggregates
+resolve duel winners
+resolve any auto-scored flash challenges if configured
+queue winner/reminder notifications if applicable
+
+This flow must be safe to re-run without double-counting.
+
+11. DevOps / Deployment Deliverables
+
+Provide:
+
+docker-compose.yml
+Dockerfile for web app
+Dockerfile for worker
+environment variable template .env.example
+SQL schema or migration files
+seed script with demo data
+README with local setup and production deployment notes for Linode
+healthcheck endpoints
+backup guidance for PostgreSQL volumes
+log strategy for containers
+
+Use named volumes for:
+
+database persistence
+uploaded avatars if local storage is used
+12. Observability
+
+Include:
+
+structured application logs
+request logging
+job failure logging
+admin action audit logging
+clear error responses
+optional metrics-ready design for future Prometheus integration
+13. Testing Requirements
+
+Provide tests for:
+
+auth flows
+lock-out logic
+scoring logic
+prediction submission rules
+leaderboard calculations
+duel resolution
+flash challenge resolution
+comment permissions
+admin-only access controls
+
+Include:
+
+unit tests
+API integration tests
+seed/demo fixtures
+14. Seed Data & Demo Flow
+
+Create seed data for:
+
+one demo tournament
+multiple teams and stages
+several matches in different states:
+upcoming
+locked
+completed
+demo users
+sample predictions
+sample comments
+sample flash challenges
+sample duel records
+
+This is required so the system can be demonstrated immediately after startup.
+
+15. Output Format Required From You
+
+Generate the implementation in this order:
+
+high-level architecture summary
+database schema
+backend folder structure
+frontend folder structure
+Docker Compose and Dockerfiles
+backend core code
+frontend core code
+worker/email job code
+seed data
+tests
+README
+
+Where code is long, prioritize complete working scaffolding over placeholder prose.
+
+Do not hand-wave features.
+Do not leave TODO notes for core logic.
+Implement production-grade foundations, even if some UI polish is minimal.
+
+Additional Product Decisions
+
+Use the following decisions as fixed requirements:
+
+Registration & Authentication
+Internal users can self-register
+Use local authentication only
+Do not implement SSO, SAML, OAuth, or social login
+Comments & Moderation
+Comments do not require moderation approval before posting
+Users may delete their own comments within the allowed rules
+Admins may delete any comment for moderation/support purposes
+Leaderboards & Winners
+The system must have one main leaderboard
+It must also support partial winners by round, stage, or other admin-defined tournament segments
+Prediction Editing
+Users may edit their predictions multiple times until the match lock deadline
+Once the lock deadline is reached, predictions become read-only
+Admin Capabilities
+Admins may support users through management tools
+Admins may not impersonate users
+If support tooling is added, it must be limited to safe actions such as viewing account status, resetting prediction state where allowed, reviewing logs, or assisting with account issues
+Flash Challenges
+Flash challenges may be attached to:
+a specific match
+a round/stage
+The data model and admin UI must support both scopes
+Reusability
+The platform must support multiple future tournaments
+The first tournament is the first World Cup edition, but the architecture must allow future reuse without major schema redesign
+Notifications
+Do not overuse notifications
+The architecture should be designed so push notifications can be added later
+Push notifications are not required in the first version, but the notification subsystem should be extensible
+Duel Invitations
+Duel invitations must expire automatically
+Expiration duration must be configurable by admins or environment config
+Expired invitations cannot be accepted
+Language
+The application will be English only
+Do not implement multilingual UI in v1, but avoid hard-coding text in a way that makes future localization impossible
+
+And here is the important missing part I would also add now, based on your answers:
+
+Additional Rules to Add
+Email Registration Restriction
+
+Even with self-registration, registration should be limited to approved email domains if this is for internal corporate use.
+
+For example:
+
+allow registration only from configured domains such as company.com
+optionally allow an admin-defined allowlist
+
+Without this, “internal use” and “self-register” conflict a bit.
+
+Support Tools Definition
+
+Since admins can support but not impersonate, define what support means:
+
+view user profile and participation status
+view prediction history
+resend welcome email or reminder email
+reset password manually or trigger reset flow
+remove abusive comments
+unlock account if rate-limited or suspended
+review audit logs related to that user
+Partial Winners Definition
+
+You said “partial winners,” but that should be formalized. Add:
+
+winners can be declared for group stage, knockout round, semifinals, final, or any admin-defined stage
+each stage leaderboard should be frozen once finalized
+the global leaderboard remains continuous across the full tournament
+Duel Expiration Rule
+
+Add something concrete:
+
+default duel invite expiry: 24 hours
+if the challenged user does not accept before expiry, the duel becomes expired
+Future Push Notification Readiness
+
+To keep this realistic:
+
+create a generic notifications table/service abstraction now
+implement email in v1
+leave web push/mobile push as future channels

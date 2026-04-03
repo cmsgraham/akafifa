@@ -1,0 +1,14 @@
+You've Been Challenged!
+
+Hi {opponent_name},
+
+{challenger_name} has challenged you to a prediction duel:
+
+  Match: {home_team} vs {away_team}
+  Kickoff: {kickoff_time} UTC
+
+You have until {expires_at} UTC to accept or decline.
+
+Log in to respond!
+
+— The Tournament Hub Team
