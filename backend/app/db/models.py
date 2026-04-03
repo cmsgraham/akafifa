@@ -506,7 +506,7 @@ class Notification(Base):
     body: Mapped[str] = mapped_column(Text, nullable=False)
     channel: Mapped[str] = mapped_column(Text, nullable=False, default="email")
     status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
-    metadata: Mapped[dict | None] = mapped_column(JSONB)
+    extra_data: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )
