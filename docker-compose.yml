@@ -14,7 +14,6 @@ services:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - certbot_certs:/etc/letsencrypt:ro
       - certbot_webroot:/var/www/certbot:ro
-      - frontend_static:/usr/share/nginx/static:ro
     depends_on:
       web:
         condition: service_healthy
@@ -57,8 +56,6 @@ services:
     env_file: .env
     expose:
       - "3000"
-    volumes:
-      - frontend_static:/app/.next/static
     depends_on:
       web:
         condition: service_healthy
@@ -154,7 +151,6 @@ volumes:
   db_data:
   certbot_certs:
   certbot_webroot:
-  frontend_static:
   avatars:
 
 networks:
