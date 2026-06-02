@@ -1,4 +1,4 @@
-# AkaFifa — World Cup Prediction Tournament
+# REDZONE — World Cup Prediction Tournament
 
 A real-time World Cup prediction platform where users compete by predicting match outcomes, participating in flash challenges, and engaging in head-to-head duels.
 
@@ -22,8 +22,8 @@ A real-time World Cup prediction platform where users compete by predicting matc
 
 ```bash
 # 1. Clone and enter the project
-git clone git@github.com:cmsgraham/akafifa.git
-cd akafifa
+git clone git@github.com:cmsgraham/redzone-soccer.git
+cd redzone-soccer
 
 # 2. Copy environment variables
 cp .env.example .env
@@ -46,7 +46,7 @@ docker compose exec web alembic upgrade head
 | PostgreSQL  | localhost:5432               |
 | Redis       | localhost:6379               |
 
-### Running Tests
+### Running Tests 
 
 ```bash
 # Backend unit tests
@@ -72,8 +72,8 @@ Target server: `172.238.203.151` (Ubuntu)
 ssh root@172.238.203.151
 
 # 2. Clone the repo
-git clone git@github.com:cmsgraham/akafifa.git /opt/akafifa
-cd /opt/akafifa
+git clone git@github.com:cmsgraham/redzone-soccer.git /opt/redzone-soccer
+cd /opt/redzone-soccer
 
 # 3. Create .env from the example and fill in production values
 cp .env.example .env
@@ -121,6 +121,23 @@ docker compose exec nginx nginx -s reload
 ├── docker-compose.yml
 ├── docker-compose.override.yml  # Dev-only (Mailpit, exposed ports)
 └── .env.example
+```
+
+## Demo Login
+
+After running `docker compose up` and seeding the database (`docker compose exec web python seed.py`), the following accounts are available:
+
+| Role  | Email              | Password      |
+|-------|--------------------|---------------|
+| Admin | admin@company.com  | Password123!  |
+| User  | alice@company.com  | Password123!  |
+| User  | bob@company.com    | Password123!  |
+| User  | carol@company.com  | Password123!  |
+| User  | dave@company.com   | Password123!  |
+
+To promote a user to admin from the CLI:
+```bash
+docker compose exec web python seed.py --make-admin user@company.com
 ```
 
 ## License

@@ -1,0 +1,13 @@
+REDZONE — Your Support Ticket Update
+
+Hi {display_name},
+
+Your ticket "{subject}" has been updated.
+
+Status: {status}
+
+Admin Reply:
+{reply}
+
+—
+View your tickets at: https://redzone-soccer.com/help

@@ -1,4 +1,4 @@
-Welcome to The Tournament Hub!
+Welcome to REDZONE!
 
 Hi {display_name},
 
@@ -6,6 +6,8 @@ Your account has been created successfully.
 
 You can now log in and start making predictions for upcoming matches.
 
+https://redzone-soccer.com
+
 Good luck!
 
-— The Tournament Hub Team
+— REDZONE

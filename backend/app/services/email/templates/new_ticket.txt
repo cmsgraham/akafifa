@@ -1,0 +1,12 @@
+REDZONE — New Support Ticket
+
+A new support ticket has been submitted.
+
+From: {display_name} ({email})
+Category: {category}
+Subject: {subject}
+
+{body}
+
+—
+Reply at: https://redzone-soccer.com/admin/tickets

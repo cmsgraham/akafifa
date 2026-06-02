@@ -12,4 +12,4 @@ The duel for {home_team} vs {away_team} has been decided!
 
 Check your duel history for full details.
 
-— The Tournament Hub Team
+— REDZONE

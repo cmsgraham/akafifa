@@ -15,8 +15,10 @@ class Settings(BaseSettings):
 
     # JWT
     JWT_SECRET_KEY: str = "change-me-in-production"
-    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
-    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    # Short-lived access token; the frontend silently refreshes on 401.
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    # Long-lived refresh token; rotated on every /auth/refresh call.
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
     # Auth
     ALLOWED_EMAIL_DOMAINS: str = ""  # comma-separated; empty = allow all
@@ -43,8 +45,14 @@ class Settings(BaseSettings):
     AVATAR_LOCAL_PATH: str = "/app/avatars"
     S3_BUCKET: str = ""
     S3_REGION: str = ""
+    S3_ENDPOINT_URL: str = ""  # e.g. https://us-east-1.linodeobjects.com
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
+
+    # Media uploads
+    MEDIA_BUCKET: str = ""  # S3 bucket for user-uploaded media
+    MEDIA_MAX_SIZE_MB: int = 10
+    MEDIA_MAX_DIMENSION: int = 1600
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

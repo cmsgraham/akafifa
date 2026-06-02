@@ -150,19 +150,22 @@ Use this section to track implementation across phases. Check each item when it 
 - [ ] One active duel per challenger/opponent/match combination enforced
 - [ ] Badge/streak display on profile (no money or gambling language)
 
-### Phase 10 — Flash Challenges
-- [ ] `GET /api/challenges/active`
-- [ ] `POST /api/challenges/:id/answer`
-- [ ] `GET /api/me/challenges`
-- [ ] `POST /api/admin/challenges`
-- [ ] `PUT /api/admin/challenges/:id`
-- [ ] `POST /api/admin/challenges/:id/resolve`
+### Phase 10 — Challenges (Paid-Entry)
+- [ ] `GET /api/challenges/active` — returns cost, reward, and user balance
+- [ ] `POST /api/challenges/:id/answer` — deducts `participation_cost` on first entry; free edits
+- [ ] `GET /api/me/challenges` — includes outcome_status, paid/reward amounts, net_points
+- [ ] `POST /api/admin/challenges` — requires `participation_cost` and `reward_points`
+- [ ] `PUT /api/admin/challenges/:id` — blocks cost change if participants exist
+- [ ] `POST /api/admin/challenges/:id/resolve` — idempotent; awards reward_points to winners
+- [ ] `POST /api/admin/challenges/:id/cancel` — refunds all participants
+- [ ] `GET /api/admin/challenges/:id/participants` — view entrants and outcomes
 - [ ] `yes_no` challenge type
 - [ ] `multiple_choice` challenge type
-- [ ] Open/close time enforced server-side
+- [ ] Active/close time enforced server-side
 - [ ] Manual resolution flow via admin API
-- [ ] Points awarded to correct answers on resolution
+- [ ] Points deducted on entry, awarded to winners on resolution, refunded on cancellation
 - [ ] Challenge scope: `match` or `stage` (both supported)
+- [ ] `points_ledger` table tracks all point movements
 
 ### Phase 11 — Notifications & Email
 - [ ] `notifications` table and service abstraction created
@@ -172,7 +175,7 @@ Use this section to track implementation across phases. Check each item when it 
 - [ ] Password reset email plain-text template
 - [ ] 24-hour prediction reminder plain-text template
 - [ ] Winner announcement plain-text template
-- [ ] Flash challenge announcement plain-text template
+- [ ] Challenge announcement plain-text template
 - [ ] Duel invitation plain-text template
 - [ ] Duel result plain-text template
 - [ ] Retry with exponential backoff (max 5 attempts, starting at 30 seconds)
@@ -201,11 +204,11 @@ Use this section to track implementation across phases. Check each item when it 
 - [ ] Leaderboard screen (global + stage tabs)
 - [ ] Match Lounge (comments with pagination)
 - [ ] Duel Center (send, accept/decline, history)
-- [ ] Flash Challenge Center
+- [ ] Challenge Center (paid-entry, balance display, confirmation modal)
 - [ ] Profile page (stats, avatar upload, favorite team)
 - [ ] Admin dashboard
 - [ ] Admin: match management and result override
-- [ ] Admin: flash challenge CRUD and resolution
+- [ ] Admin: challenge CRUD, resolution, cancellation/refund, participant view
 - [ ] Admin: user management and support tools
 - [ ] Admin: audit log viewer
 - [ ] Dark mode (respects OS preference)
@@ -223,7 +226,7 @@ Use this section to track implementation across phases. Check each item when it 
 - [ ] Unit: `calculate_points()` — exact, outcome, miss cases
 - [ ] Unit: tie-breaker ordering logic
 - [ ] Unit: duel resolution — win, loss, draw, missing prediction case
-- [ ] Unit: flash challenge resolution — yes/no and multiple choice
+- [ ] Unit: challenge paid-entry — deduction, reward, refund, idempotent resolution
 - [ ] Unit: comment grace period enforcement
 - [ ] Integration: register with valid domain → success
 - [ ] Integration: register with blocked domain → 403
@@ -242,8 +245,9 @@ Use this section to track implementation across phases. Check each item when it 
 - [ ] Integration: admin-only endpoint by non-admin → 403
 - [ ] Integration: full duel lifecycle (pending → accepted → scored)
 - [ ] Integration: duel expiry (not accepted in time → expired)
-- [ ] Integration: flash challenge answer before `close_at` → success
-- [ ] Integration: flash challenge answer after `close_at` → 400
+- [ ] Integration: challenge paid-entry answer before `close_at` → deducted & success
+- [ ] Integration: challenge answer after `close_at` → 400
+- [ ] Integration: challenge cancellation → all participants refunded
 - [ ] Seed fixtures verified: system demonstrable after `docker compose up`
 
 ### Phase 15 — Production Readiness
@@ -269,7 +273,7 @@ Use this section to track implementation across phases. Check each item when it 
 | Lock-at | UTC timestamp after which predictions for a match become read-only |
 | Stage | A named tournament phase, e.g., Group Stage, Round of 16, Quarterfinals, Final |
 | Duel | A 1-vs-1 prediction competition between two users on a specific match |
-| Flash Challenge | An admin-created binary or multiple-choice question tied to a match or stage |
+| Challenge (Paid-Entry) | An admin-created binary or multiple-choice question tied to a match or stage; users pay `participation_cost` to enter and winners receive `reward_points` |
 | Exact Score | Predicted home and away scores both match the actual result exactly |
 | Correct Outcome | Predicted outcome (home win / draw / away win) matches, but individual scores differ |
 | Admin | A user with role `admin` who can manage tournaments, challenges, scores, and users |
@@ -287,13 +291,13 @@ All timestamps are stored and processed in **UTC**. The UI converts to the user'
 - View personal and global leaderboards
 - Participate in match-specific social discussions (The Lounge)
 - Challenge other users in 1-vs-1 prediction duels
-- Answer admin-created flash challenges
+- Spend points to enter admin-created challenges; edit answers for free
 - Manage their profile, display name, avatar, favorite team, and bio
 
 ### Admins can additionally
 - Manage tournament and stage configuration
 - Define and reconfigure prediction lock-out timing
-- Create, edit, resolve, and delete flash challenges
+- Create, edit, resolve, cancel (with refunds), and delete challenges
 - Assign and award prizes for stages and the overall tournament
 - Manually override match scores or challenge results
 - Trigger external data re-sync
@@ -507,35 +511,60 @@ Each match has a comment feed.
 - Optional banned-word filter: configurable list, **off by default**
 - Real-time updates: polling in v1; SSE or WebSocket as a future upgrade
 
-### 5.7 Duels
+### 5.7 Duels (Point Staking System)
 
-Users challenge each other to 1-vs-1 prediction competitions on a specific match.
+Users challenge each other to 1-vs-1 prediction competitions on a specific match, wagering leaderboard points.
+
+**Core Concept:**
+This is a **points staking system with escrow**. Users wager their earned points against each other. When a duel becomes active, both users' stakes are deducted (escrow). The winner takes the full pot; on a tie, both are refunded.
 
 **Lifecycle:**
 
 ```
-PENDING → ACCEPTED → SCORED (on match confirmation)
+PENDING → ACTIVE (escrow deducted from both) → COMPLETED (pot paid out)
         ↘ DECLINED
         ↘ EXPIRED (configurable timeout, default 24 h)
 ```
 
+**Point Accounting:**
+- `UserProfile.duel_points_balance` tracks net duel gains/losses (separate from prediction-earned `total_points`)
+- Available to wager: `total_points + duel_points_balance`
+- On accept: both `duel_points_balance -= stake`
+- On resolution (winner): `winner.duel_points_balance += 2 × stake`
+- On resolution (tie): both `duel_points_balance += stake` (refund)
+- Net effect per duel: winner gains `+stake`, loser loses `−stake`, tie nets `0`
+
+**Stake Rules:**
+- Minimum stake: 1 point
+- Maximum stake: 50 points
+- Challenger must have sufficient available points when creating
+- Opponent must have sufficient available points when accepting
+- Row-level locking (`SELECT ... FOR UPDATE`) prevents double-spending on accept
+
 **Rules:**
 - One user initiates; the target must accept or decline
 - Both submit predictions through the standard prediction flow (no separate duel prediction form)
-- Match confirmation triggers automatic duel scoring
-- Tied duels are marked `draw`
+- Match confirmation triggers automatic duel scoring and escrow payout
 - If a user has no prediction, they receive 0 points for the duel; the other user wins
 - Only one active duel per challenger/opponent/match combination is allowed
-- Expired invitations cannot be accepted
+- Expired invitations cannot be accepted (pending duels have no escrow)
 - Duel invitation expiry: **24 hours** (configurable via `DUEL_INVITE_EXPIRY_HOURS`)
+- Tied duels: `winner_id` is NULL on a completed duel (no separate `is_draw` field)
+
+**Audit Logging:**
+All duel lifecycle events are logged to `audit_logs`: `duel_created`, `duel_accepted`, `duel_declined`, `duel_cancelled`
 
 **User-facing features:**
-- Duel history view
-- Badge and streak counters on profile (engagement only; no money, no gambling language)
+- Stake selection during duel creation (preset amounts)
+- Available points balance shown in create modal
+- Pot size and escrow status on active duel cards
+- Score breakdown and net points delta on completed duels
+- Win/loss/draw counters and duel balance on profile
 
-### 5.8 Flash Challenges
+### 5.8 Challenges (Paid-Entry System)
 
 Admin-created questions attached to a match or a tournament stage.
+**Users pay points to enter; winners earn a reward; losers forfeit their entry cost.**
 
 **Challenge types (v1):**
 - `yes_no` — Binary answer (Yes / No); internally stored as a two-option `multiple_choice`
@@ -555,15 +584,27 @@ Admin-created questions attached to a match or a tournament stage.
 | `options` | Option labels (required for `multiple_choice`) |
 | `open_at` | When users can start answering |
 | `close_at` | When answers are locked |
-| `points_value` | Points awarded for correct answer |
+| `participation_cost` | Points deducted from user on entry (1–50) |
+| `reward_points` | Points awarded to winners on resolution (1–100) |
 | `resolution_method` | `manual` or `automatic` |
 | `scope` | `match` or `stage` |
+
+**Point Economy:**
+- On first answer submission, `participation_cost` is atomically deducted from user's `challenge_points_balance` (with row-level locking)
+- User must have sufficient available balance (`total_points + duel_points_balance + challenge_points_balance >= participation_cost`)
+- Editing an answer before `close_at` is free (no re-charge)
+- On resolution: winners receive `reward_points` added to `challenge_points_balance`; losers receive nothing (already paid)
+- On cancellation: all participants are refunded `participation_cost` back to `challenge_points_balance`
+- All transactions are recorded in the `points_ledger` table for audit
 
 **Resolution:**
 - `manual` — Admin confirms the correct option via `POST /api/admin/challenges/:id/resolve`
 - `automatic` — System resolves based on match data if the data provider supports it (future feature; not active in v1)
+- Resolution is idempotent: already-resolved answers are skipped on re-run
 
-**Challenge status lifecycle:** `draft → open → closed → resolved / cancelled`
+**Challenge status lifecycle:** `draft → active → locked → resolved / cancelled`
+
+**Answer outcome lifecycle:** `pending → won / lost / refunded`
 
 ---
 
@@ -610,7 +651,7 @@ SMTP_TLS_ENABLED   # false in local, true in production
 | Password Reset | Forgot-password request | Requesting user |
 | 24h Prediction Reminder | Scheduled job, 24 h before lock-out | Users without a prediction for that match |
 | Winner Announcement | Admin declares stage or tournament winner | All participants |
-| Flash Challenge Announcement | Admin publishes a challenge | All eligible users |
+| Challenge Announcement | Admin activates a paid-entry challenge | All eligible users |
 | Duel Invitation | User sends duel challenge | Target user |
 | Duel Result | Match confirmed, duel scored | Both duel participants |
 
@@ -644,7 +685,7 @@ id, user_id, type, title, body, channel, status, created_at, sent_at, metadata (
 ### 7.3 Authorization
 
 **Roles:**
-- `user` — Default; can submit predictions, comments, duels, and flash challenge answers
+- `user` — Default; can submit predictions, comments, duels, and paid-entry challenge answers
 - `admin` — Elevated; can access all admin APIs in addition to standard user features
 
 **Admin assignment:**
@@ -768,13 +809,16 @@ All list endpoints returning potentially large collections use **cursor-based pa
 - `DELETE /api/comments/:id`
 
 **Duels**
-- `POST /api/matches/:id/duels`
+- `POST /api/matches/:id/duels` (body: opponent_id, stake_points)
 - `POST /api/duels/:id/accept`
 - `POST /api/duels/:id/decline`
+- `POST /api/duels/:id/cancel`
+- `GET  /api/me/duel-balance`
 
-**Flash Challenges**
-- `GET  /api/challenges/active`
-- `POST /api/challenges/:id/answer`
+**Challenges (Paid-Entry)**
+- `GET  /api/challenges/active` — includes participation_cost, reward_points, available_balance
+- `POST /api/challenges/:id/answer` — deducts cost on first entry; free edits
+- `GET  /api/me/challenges` — includes outcome_status, paid/reward amounts
 
 **Admin — Settings**
 - `PUT /api/admin/settings/lockout`
@@ -787,11 +831,13 @@ All list endpoints returning potentially large collections use **cursor-based pa
 **Admin — Stages**
 - `POST /api/admin/stages/:id/freeze`
 
-**Admin — Flash Challenges**
-- `POST /api/admin/challenges`
-- `PUT  /api/admin/challenges/:id`
-- `POST /api/admin/challenges/:id/resolve`
-- `DELETE /api/admin/challenges/:id`
+**Admin — Challenges**
+- `POST   /api/admin/challenges` — requires participation_cost, reward_points
+- `PUT    /api/admin/challenges/:id` — blocks cost change if participants exist
+- `POST   /api/admin/challenges/:id/resolve` — idempotent; awards reward_points to winners
+- `POST   /api/admin/challenges/:id/cancel` — refunds all participants
+- `GET    /api/admin/challenges/:id/participants` — view entrants and outcomes
+- `DELETE /api/admin/challenges/:id` — blocked if un-refunded participants exist
 
 **Admin — Users & Support**
 - `GET  /api/admin/users/:id`
@@ -832,20 +878,22 @@ updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 
 **user_profiles**
 ```sql
-id                UUID        PRIMARY KEY DEFAULT gen_random_uuid()
-user_id           UUID        NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE
-display_name      TEXT        NOT NULL
-avatar_path       TEXT
-bio               TEXT
-favorite_team_id  UUID        REFERENCES teams(id)
-total_points      INTEGER     NOT NULL DEFAULT 0
-exact_hits        INTEGER     NOT NULL DEFAULT 0
-outcome_hits      INTEGER     NOT NULL DEFAULT 0
-duel_wins         INTEGER     NOT NULL DEFAULT 0
-duel_losses       INTEGER     NOT NULL DEFAULT 0
-duel_draws        INTEGER     NOT NULL DEFAULT 0
-created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
-updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+id                       UUID        PRIMARY KEY DEFAULT gen_random_uuid()
+user_id                  UUID        NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE
+display_name             TEXT        NOT NULL
+avatar_path              TEXT
+bio                      TEXT
+favorite_team_id         UUID        REFERENCES teams(id)
+total_points             INTEGER     NOT NULL DEFAULT 0
+exact_hits               INTEGER     NOT NULL DEFAULT 0
+outcome_hits             INTEGER     NOT NULL DEFAULT 0
+duel_wins                INTEGER     NOT NULL DEFAULT 0
+duel_losses              INTEGER     NOT NULL DEFAULT 0
+duel_draws               INTEGER     NOT NULL DEFAULT 0
+duel_points_balance      INTEGER     NOT NULL DEFAULT 0
+challenge_points_balance INTEGER     NOT NULL DEFAULT 0
+created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
 ```
 
 **tournaments**
@@ -938,7 +986,8 @@ scope             TEXT        NOT NULL CHECK (scope IN ('match', 'stage'))
 title             TEXT        NOT NULL
 description       TEXT
 type              TEXT        NOT NULL CHECK (type IN ('yes_no', 'multiple_choice'))
-points_value      INTEGER     NOT NULL DEFAULT 1
+participation_cost INTEGER    NOT NULL DEFAULT 1
+reward_points      INTEGER    NOT NULL DEFAULT 3
 open_at           TIMESTAMPTZ NOT NULL
 close_at          TIMESTAMPTZ NOT NULL
 resolution_method TEXT        NOT NULL
@@ -946,7 +995,7 @@ resolution_method TEXT        NOT NULL
 correct_option_id UUID        REFERENCES flash_challenge_options(id)
 resolved_at       TIMESTAMPTZ
 status            TEXT        NOT NULL DEFAULT 'draft'
-                  CHECK (status IN ('draft','open','closed','resolved','cancelled'))
+                  CHECK (status IN ('draft','active','locked','resolved','cancelled'))
 created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 ```
@@ -962,31 +1011,54 @@ created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 
 **flash_challenge_answers**
 ```sql
-id             UUID        PRIMARY KEY DEFAULT gen_random_uuid()
-challenge_id   UUID        NOT NULL REFERENCES flash_challenges(id)
-user_id        UUID        NOT NULL REFERENCES users(id)
-option_id      UUID        NOT NULL REFERENCES flash_challenge_options(id)
-points_awarded INTEGER
-submitted_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+id                    UUID        PRIMARY KEY DEFAULT gen_random_uuid()
+challenge_id          UUID        NOT NULL REFERENCES flash_challenges(id)
+user_id               UUID        NOT NULL REFERENCES users(id)
+option_id             UUID        NOT NULL REFERENCES flash_challenge_options(id)
+paid_points           INTEGER     NOT NULL DEFAULT 0
+reward_points_awarded INTEGER
+outcome_status        TEXT        NOT NULL DEFAULT 'pending'
+                      CHECK (outcome_status IN ('pending','won','lost','refunded'))
+submitted_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 UNIQUE (challenge_id, user_id)
 ```
 
 **duel_challenges**
 ```sql
-id            UUID        PRIMARY KEY DEFAULT gen_random_uuid()
-match_id      UUID        NOT NULL REFERENCES matches(id)
-challenger_id UUID        NOT NULL REFERENCES users(id)
-opponent_id   UUID        NOT NULL REFERENCES users(id)
-status        TEXT        NOT NULL DEFAULT 'pending'
-                          CHECK (status IN (
-                            'pending','accepted','declined','expired','scored'
-                          ))
-winner_id     UUID        REFERENCES users(id)
-is_draw       BOOLEAN     NOT NULL DEFAULT FALSE
-expires_at    TIMESTAMPTZ NOT NULL
-created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+id               UUID        PRIMARY KEY DEFAULT gen_random_uuid()
+match_id         UUID        NOT NULL REFERENCES matches(id)
+challenger_id    UUID        NOT NULL REFERENCES users(id)
+opponent_id      UUID        NOT NULL REFERENCES users(id)
+stake_points     INTEGER     NOT NULL DEFAULT 0 CHECK (stake_points >= 0)
+status           TEXT        NOT NULL DEFAULT 'pending'
+                             CHECK (status IN (
+                               'pending','active','declined','expired','completed'
+                             ))
+winner_id        UUID        REFERENCES users(id)
+challenger_score INTEGER
+opponent_score   INTEGER
+resolved_at      TIMESTAMPTZ
+expires_at       TIMESTAMPTZ NOT NULL
+created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 UNIQUE (match_id, challenger_id, opponent_id)
+```
+
+**points_ledger**
+```sql
+id               UUID        PRIMARY KEY DEFAULT gen_random_uuid()
+user_id          UUID        NOT NULL REFERENCES users(id)
+transaction_type TEXT        NOT NULL
+                 CHECK (transaction_type IN (
+                   'challenge_entry','challenge_reward','challenge_refund',
+                   'duel_stake','duel_win','duel_refund','admin_adjustment'
+                 ))
+reference_type   TEXT
+reference_id     UUID
+points_delta     INTEGER     NOT NULL
+balance_after    INTEGER     NOT NULL
+metadata_json    JSONB
+created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 ```
 
 **comments**
@@ -1097,11 +1169,15 @@ CREATE INDEX idx_duels_opponent_id      ON duel_challenges(opponent_id);
 CREATE INDEX idx_duels_match_id         ON duel_challenges(match_id);
 CREATE INDEX idx_duels_status           ON duel_challenges(status);
 
--- Flash challenges
+-- Challenges (paid-entry)
 CREATE INDEX idx_flash_match_id         ON flash_challenges(match_id);
 CREATE INDEX idx_flash_stage_id         ON flash_challenges(stage_id);
 CREATE INDEX idx_flash_answers_challenge ON flash_challenge_answers(challenge_id);
 CREATE INDEX idx_flash_answers_user     ON flash_challenge_answers(user_id);
+
+-- Points ledger
+CREATE INDEX idx_points_ledger_user_id  ON points_ledger(user_id);
+CREATE INDEX idx_points_ledger_created  ON points_ledger(created_at);
 
 -- Email jobs
 CREATE INDEX idx_email_jobs_status      ON outbound_email_jobs(status);
@@ -1153,11 +1229,11 @@ CREATE INDEX idx_audit_created_at       ON audit_logs(created_at);
 | Match Lounge (comments) | `/matches/:id/lounge` |
 | Leaderboard | `/leaderboard` |
 | Duel Center | `/duels` |
-| Flash Challenge Center | `/challenges` |
+| Challenge Center (Paid-Entry) | `/challenges` |
 | Profile | `/profile` |
 | Admin Dashboard | `/admin` |
 | Admin Match Management | `/admin/matches` |
-| Admin Flash Challenges | `/admin/challenges` |
+| Admin Challenges | `/admin/challenges` |
 | Admin User Management | `/admin/users` |
 | Admin Audit Logs | `/admin/audit-logs` |
 
@@ -1195,7 +1271,7 @@ When a match is confirmed:
 3. Write `points` and `result_type` to the `predictions` row
 4. Upsert `user_profiles.total_points`, `exact_hits`, `outcome_hits`
 5. Resolve all `accepted` duels for this match (Section 12.2)
-6. Resolve any `automatic` flash challenges linked to this match (if supported)
+6. Resolve any `automatic` challenges linked to this match (if supported)
 7. Invalidate Redis leaderboard cache entries for affected tournament and stage
 8. Enqueue notification jobs (winner announcements, duel results) as applicable
 9. Append an entry to `audit_logs`
@@ -1368,7 +1444,7 @@ Nginx runs as a container inside Docker Compose and is the **only** service with
 - `calculate_points()` — metadata fields present and correct
 - Tie-breaker ordering — all five levels exercised
 - Duel resolution — win, loss, draw, missing prediction
-- Flash challenge resolution — yes/no, multiple choice
+- Challenge resolution — paid-entry deduction, winner reward, cancellation refund
 - Comment grace period — inside window, at boundary, outside window
 
 ### 15.2 Integration Tests
@@ -1398,9 +1474,10 @@ Nginx runs as a container inside Docker Compose and is the **only** service with
 | Full duel lifecycle: send → accept → score | All status transitions correct |
 | Duel expires without acceptance | Status = expired |
 | Accept expired duel | 400 |
-| Flash challenge answer before close_at | 201 |
-| Flash challenge answer after close_at | 400 |
-| Admin resolves flash challenge; points awarded | Points assigned to correct answers |
+| Challenge paid-entry answer before close_at | 201; participation_cost deducted |
+| Challenge answer after close_at | 400 |
+| Admin resolves challenge; rewards awarded | reward_points assigned to winners; losers unchanged |
+| Admin cancels challenge | All participants refunded |
 
 ### 15.3 Test Fixtures
 
@@ -1411,7 +1488,7 @@ Provide pytest fixtures covering:
 - 6 matches: 2 upcoming, 2 locked, 2 confirmed with results
 - Predictions in all states (scored, unscored, missing)
 - 1 active duel, 1 expired duel
-- 2 flash challenges: 1 open, 1 resolved
+- 2 challenges: 1 active (paid-entry), 1 resolved
 - 10 sample comments across 2 matches
 
 ---
@@ -1429,7 +1506,7 @@ The seed script must make the system **fully demonstrable immediately after `doc
 | Demo users | 5 (1 admin: `admin@company.com`, 4 regular users) |
 | Predictions | All 5 users across both confirmed matches |
 | Comments | 10 spread across 2 matches |
-| Flash challenges | 2 (1 open yes/no, 1 resolved multiple choice) |
+| Challenges | 2 (1 active paid-entry yes/no, 1 resolved multiple choice) |
 | Duels | 2 (1 accepted and scored, 1 pending) |
 | Prizes | 1 prize defined for tournament winner |
 
@@ -1588,5 +1665,5 @@ These decisions are final and must not be revisited without an explicit change r
 | Admin promotion | CLI/seed for first admin; admin API for subsequent promotions |
 | UI strings | Stored in `constants/`; no hard-coded user-facing text in components |
 | Tournament reuse | Architecture supports multiple future tournaments without schema redesign |
-| Flash challenge scope | Both `match` and `stage` scopes supported in v1 |
+| Challenge scope | Both `match` and `stage` scopes supported in v1 |
 | Scoring extensibility | `ScoringConfig` struct exists in v1; advanced modes disabled by default |

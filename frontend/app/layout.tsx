@@ -1,10 +1,25 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
+import { TimezoneProvider } from "@/lib/timezone-context";
+import { ThemeProvider } from "@/lib/theme-context";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
 
 export const metadata: Metadata = {
-  title: "The Tournament Hub",
-  description: "World Cup Prediction Platform",
+  title: "REDZONE",
+  description: "Predict. Compete. Dominate.",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export default function RootLayout({
@@ -13,9 +28,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen">
-        <AuthProvider>{children}</AuthProvider>
+    <html lang="en" suppressHydrationWarning className="overflow-x-hidden">
+      <body className="min-h-screen overflow-x-hidden">
+        <ThemeProvider>
+          <AuthProvider>
+            <TimezoneProvider>{children}</TimezoneProvider>
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

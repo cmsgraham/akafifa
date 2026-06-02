@@ -23,6 +23,7 @@ services:
       - /app/.next
     environment:
       - APP_ENV=local
+      - NEXT_PUBLIC_GIPHY_API_KEY=${NEXT_PUBLIC_GIPHY_API_KEY}
 
   # Expose DB for local tools (pgAdmin, DBeaver, etc.)
   db:
@@ -40,6 +41,9 @@ services:
     ports:
       - "8025:8025"   # Web UI
       - "1025:1025"   # SMTP
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
     restart: unless-stopped
     networks:
       - app_net

@@ -161,19 +161,38 @@ rate limit posting
 max comment length
 optional banned-word filter
 real-time updates preferred via polling or websocket/SSE, but polling is acceptable if simpler
-User Challenges / Duals
+User Duels (Point-Staking System)
 
-Users can challenge each other for a specific match.
+Users can challenge each other for a specific match by staking prediction points.
 
-Requirements:
+Core Mechanics:
 
-one user initiates a challenge
+stake-based system: challenger selects a stake between 1 and 50 points
+available points = total_points + duel_points_balance + challenge_points_balance
+escrow on accept: when the opponent accepts, both players have stake_points deducted from duel_points_balance
+resolution: when the match completes, the player with more prediction points for that match wins
+  winner receives 2× stake returned to duel_points_balance
+  draw: both players receive their stake refunded to duel_points_balance
+duel win/loss/draw counters updated on user profiles after resolution
+
+Duel Lifecycle:
+
+statuses: pending → active → completed (or declined / expired / cancelled)
+one user initiates a challenge for a specific match, selecting an opponent and stake
 target user must accept or decline
-both users submit predictions normally
-once the match completes, winner of the duel is determined by prediction points
-if tied, mark duel as draw
-include a token/badge/streak system only for engagement, with no real money or gambling language
-allow users to see duel history
+  accept: escrow deducted from both players, status → active
+  decline: status → declined, no points moved
+cancel: challenger can cancel while still pending (status → declined)
+auto-expiration: pending duels expire after configurable DUEL_INVITE_EXPIRY_HOURS (default 24h)
+  background job (expire_duels) sweeps expired invitations
+duplicate prevention: only one active/pending duel per challenger/opponent/match pair
+
+Additional Features:
+
+opponent search endpoint (search users by display name)
+duel balance endpoint (returns current duel_points_balance and available points)
+duel history with match info, scores, results, and winner
+notifications: duel_invitation, duel_accepted, duel_declined, duel_expired, duel_won, duel_lost, duel_draw
 3.7 Profiles
 
 Each user profile must support:
@@ -184,7 +203,9 @@ avatar upload
 favorite team
 short optional bio
 total points
-duel record
+duel record (wins / losses / draws)
+duel_points_balance (escrow balance for duels)
+challenge_points_balance (balance for flash challenge entries/winnings)
 badges or streak counters
 
 Avatar storage:
@@ -206,25 +227,47 @@ manually trigger result recalculation
 manually override match result or challenge result
 trigger external data re-sync
 view audit log entries
-Flash Challenges
+Flash Challenges (Paid-Entry System)
+
+Users pay prediction points to participate in admin-created challenges and can win reward points.
 
 Examples:
 
-“Will there be a red card?”
-“Will a fan run onto the pitch?”
+"Will there be a red card?" (yes/no)
+"Who will score first?" (multiple choice)
 
-Requirements:
+Core Mechanics:
 
-challenge types must be extensible
-some flash challenges may be manually resolved by admins
-some may later support automatic resolution if the data provider supports it
-users answer with Yes/No or predefined options
-admins can set:
-open time
-close time
-points value
-eligibility scope
-resolution method: automatic or manual
+challenge types: yes_no, multiple_choice
+scopes: match-level or stage-level
+participation_cost: points deducted from challenge_points_balance on first answer
+  edits to an existing answer are free (no additional cost)
+  available balance = total_points + duel_points_balance + challenge_points_balance
+reward_points: points awarded to winners on resolution
+all point transactions recorded in PointsLedger table
+
+Challenge Lifecycle:
+
+statuses: draft → active → locked → resolved (or cancelled)
+admins create challenges with: title, description, type, options, participation_cost, reward_points, open_at, close_at, scope (match/stage)
+users can answer active challenges (before close_at)
+  first answer deducts participation_cost from challenge_points_balance
+  subsequent edits are free
+admin resolves by selecting the correct option
+  winners receive reward_points added to challenge_points_balance
+  losers receive nothing
+admin can cancel a challenge
+  all participants are refunded participation_cost to challenge_points_balance
+
+Admin Capabilities:
+
+create/edit/delete challenges
+edit restrictions: participation_cost cannot be changed if participants already exist
+resolve challenges by selecting correct option
+cancel with automatic refund to all participants
+view participant list per challenge
+clone existing challenges (pre-fills create form with existing data)
+auto-fill close_at from match kickoff when match scope is selected
 4. Communication System
 Plain-Text Email Worker
 
@@ -296,22 +339,24 @@ include migration support for schema evolution
 Design and implement SQL schema for at least these tables:
 
 users
-user_profiles
+user_profiles (includes duel_points_balance, challenge_points_balance, duel_wins, duel_losses, duel_draws)
 tournaments
 teams
 stages
 matches
 match_results
 predictions
-flash_challenges
+flash_challenges (includes participation_cost, reward_points, scope: match/stage)
 flash_challenge_options
 flash_challenge_answers
-duel_challenges
+duel_challenges (includes stake_points, challenger_score, opponent_score, winner_id, expires_at, resolved_at)
 comments
 prizes
+points_ledger (tracks all point transactions: challenge_entry, challenge_refund, challenge_reward, duel_stake, duel_payout, duel_refund)
 leaderboard_snapshots or cached aggregates if needed
 audit_logs
 outbound_email_jobs or job tracking table if useful
+in_app_notifications (type, title, message, read status, related entity, action URL, dedup key)
 
 Important data rules:
 
@@ -361,21 +406,32 @@ POST /api/matches/:id/comments
 PUT /api/comments/:id
 DELETE /api/comments/:id
 Duels
-POST /api/matches/:id/duels
-POST /api/duels/:id/accept
+POST /api/matches/:id/duels (create duel with stake and opponent)
+POST /api/duels/:id/accept (accept and escrow)
 POST /api/duels/:id/decline
-GET /api/me/duels
+POST /api/duels/:id/cancel (challenger only, while pending)
+GET /api/me/duels (duel history with match info, scores, results)
+GET /api/me/duel-balance (current balance and available points)
+GET /api/duels/opponents (search users by display name)
 Flash Challenges
 GET /api/challenges/active
-POST /api/challenges/:id/answer
-GET /api/me/challenges
+POST /api/challenges/:id/answer (paid entry on first answer, free edits)
+GET /api/me/challenges (participation history with results)
 Admin
-POST /api/admin/challenges
-PUT /api/admin/challenges/:id
-POST /api/admin/challenges/:id/resolve
+POST /api/admin/challenges (create with participation_cost, reward_points, scope)
+PUT /api/admin/challenges/:id (edit, cost locked if participants exist)
+DELETE /api/admin/challenges/:id
+POST /api/admin/challenges/:id/resolve (select correct option, award winners)
+POST /api/admin/challenges/:id/cancel (refund all participants)
+GET /api/admin/challenges/:id/participants
 POST /api/admin/sync/matches
 PUT /api/admin/settings/lockout
 GET /api/admin/audit-logs
+Notifications
+GET /api/me/notifications (paginated list)
+GET /api/me/notifications/unread-count
+POST /api/me/notifications/:id/read
+POST /api/me/notifications/read-all
 9. Frontend Requirements
 
 Build a clean mobile-first UI with these screens:
@@ -440,12 +496,38 @@ Result Processing
 When a match result becomes final:
 
 calculate scores for all related predictions
-update leaderboard aggregates
-resolve duel winners
-resolve any auto-scored flash challenges if configured
+recalculate total_points, exact_hits, outcome_hits for all affected users
+resolve active duels for the match:
+  compare prediction points for both duel participants
+  winner receives 2× stake to duel_points_balance
+  draw: both players refunded stake to duel_points_balance
+  update duel_wins / duel_losses / duel_draws counters on profiles
+notify users of prediction results and duel outcomes
 queue winner/reminder notifications if applicable
 
 This flow must be safe to re-run without double-counting.
+
+Duel Expiration
+
+Background job (expire_duels) runs periodically to:
+
+find pending duels past their expires_at timestamp
+set status to expired
+notify both challenger and opponent of expiration
+
+Flash Challenge Resolution
+
+When an admin resolves a challenge:
+
+admin selects the correct option
+all participants who chose correctly receive reward_points added to challenge_points_balance
+losers receive nothing
+transactions recorded in PointsLedger
+
+When an admin cancels a challenge:
+
+all participants are refunded participation_cost to challenge_points_balance
+refund transactions recorded in PointsLedger
 
 11. DevOps / Deployment Deliverables
 
@@ -594,7 +676,7 @@ Without this, “internal use” and “self-register” conflict a bit.
 Support Tools Definition
 
 Since admins can support but not impersonate, define what support means:
-
+`
 view user profile and participation status
 view prediction history
 resend welcome email or reminder email

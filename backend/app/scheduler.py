@@ -18,9 +18,12 @@ logger = logging.getLogger("scheduler")
 
 # Schedule definitions: (interval_seconds, queue_name, job_function_path)
 SCHEDULES = [
-    (300, "sync", "app.jobs.sync_matches.run"),       # every 5 min
-    (3600, "default", "app.jobs.expire_duels.run"),    # every hour
-    (3600, "email", "app.jobs.send_reminders.run"),    # every hour
+    (60, "email", "app.jobs.process_email_queue.run"),  # every minute
+    (300, "sync", "app.jobs.sync_matches.run"),         # every 5 min
+    (3600, "default", "app.jobs.expire_duels.run"),     # every hour
+    (3600, "email", "app.jobs.send_reminders.run"),     # every hour
+    (43200, "sync", "app.jobs.refresh_news.run"),       # every 12h (12 AM & 12 PM)
+    (86400, "sync", "app.jobs.sync_unafut.run"),        # once a day
 ]
 
 

@@ -14,6 +14,7 @@ services:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - /var/www/certbot:/var/www/certbot:ro
+      - avatars:/data/avatars:ro
     depends_on:
       web:
         condition: service_healthy
@@ -29,6 +30,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     env_file: .env
+    volumes:
+      - avatars:/app/avatars
     expose:
       - "8000"
     depends_on:
@@ -53,6 +56,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_GIPHY_API_KEY: ${NEXT_PUBLIC_GIPHY_API_KEY}
     env_file: .env
     expose:
       - "3000"
@@ -143,19 +148,6 @@ services:
         condition: service_healthy
       migrations:
         condition: service_completed_successfully
-    restart: unless-stopped
-    networks:
-      - app_net
-
-  # ── Mail Server (Mailpit) ──────────────────────────────────
-  mailpit:
-    image: axllent/mailpit:latest
-    expose:
-      - "1025"
-      - "8025"
-    environment:
-      MP_SMTP_AUTH_ACCEPT_ANY: 1
-      MP_SMTP_AUTH_ALLOW_INSECURE: 1
     restart: unless-stopped
     networks:
       - app_net

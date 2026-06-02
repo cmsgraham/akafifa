@@ -1,8 +1,8 @@
 /** UI strings — centralised for future i18n support. */
 
 export const APP = {
-  name: "The Tournament Hub",
-  tagline: "World Cup Prediction Platform",
+  name: "REDZONE",
+  tagline: "Predict. Compete. Dominate.",
 };
 
 export const AUTH = {
@@ -43,4 +43,59 @@ export const LEADERBOARD = {
   points: "Points",
   exact: "Exact",
   outcome: "Outcome",
+};
+
+export const DASHBOARD = {
+  TITLE: "Dashboard",
+  TOURNAMENTS: "Tournaments",
+  LEADERBOARD: "Leaderboard",
+  DUELS: "Duels",
+  CHALLENGES: "Flash Challenges",
+  PROFILE: "My Profile",
+};
+
+export const DUEL = {
+  title: "Duels",
+  send: "Send Challenge",
+  accept: "Accept",
+  decline: "Decline",
+  pending: "Pending",
+  accepted: "Accepted",
+  expired: "Expired",
+  scored: "Scored",
+  win: "Win",
+  loss: "Loss",
+  draw: "Draw",
+};
+
+export const CHALLENGE = {
+  title: "Flash Challenges",
+  submit: "Submit Answer",
+  open: "Open",
+  closed: "Closed",
+  resolved: "Resolved",
+};
+
+export const PROFILE = {
+  title: "Profile",
+  editProfile: "Edit Profile",
+  uploadAvatar: "Upload Avatar",
+  bio: "Bio",
+  favoriteTeam: "Favorite Team",
+};
+
+export const ADMIN = {
+  title: "Admin Dashboard",
+  matches: "Match Management",
+  challenges: "Flash Challenges",
+  users: "User Management",
+  auditLogs: "Audit Logs",
+};
+
+export const COMMENT = {
+  placeholder: "Write a comment...",
+  submit: "Post",
+  edit: "Edit",
+  delete: "Delete",
+  graceExpired: "Edit window expired",
 };

@@ -39,3 +39,6 @@ out/
 
 # Volumes (local dev)
 volumes/
+
+# Local backups (contains DB dumps with user data)
+backups/

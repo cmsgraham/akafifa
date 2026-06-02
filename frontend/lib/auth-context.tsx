@@ -8,13 +8,15 @@ interface User {
   email: string;
   role: string;
   is_active: boolean;
+  display_name?: string;
 }
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, displayName: string) => Promise<void>;
+  sendVerificationCode: (email: string, password: string, displayName: string, country: string) => Promise<void>;
+  verifyAndRegister: (email: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -46,10 +48,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await refreshUser();
   };
 
-  const register = async (email: string, password: string, displayName: string) => {
-    await apiFetch("/auth/register", {
+  const sendVerificationCode = async (email: string, password: string, displayName: string, country: string) => {
+    await apiFetch("/auth/register/send-code", {
       method: "POST",
-      body: JSON.stringify({ email, password, display_name: displayName }),
+      body: JSON.stringify({ email, password, display_name: displayName, country }),
+    });
+  };
+
+  const verifyAndRegister = async (email: string, code: string) => {
+    await apiFetch("/auth/register/verify", {
+      method: "POST",
+      body: JSON.stringify({ email, code }),
     });
     await refreshUser();
   };
@@ -60,7 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, login, sendVerificationCode, verifyAndRegister, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );
